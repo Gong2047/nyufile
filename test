@@ -1,0 +1,31 @@
+
+Recovering contiguous file CHANGMIN.G with SHA
+Received SHA: e3626752d3b2138d74efe4edc7d9ac5cc1a77a73
+
+Received SHA: e3626752d3b2138d74ef˛
+
+SHA1 of test text:
+e3626752d3b2138d74efe4edc7d9ac5cc1a77a73
+SHA1 test ended 
+
+Found file :ÂHANGMIN.G
+Cluster start: 6
+Size: 26
+Num of clusters in file: 1
+43 48 41 4E 47 20 6D 69 6E 67 7A 69 20 44 55 41 
+SHA1 of file:
+e3626752d3b2138d74efe4edc7d9ac5cc1a77a73
+e3626752d3b2138d74efe4edc7d9ac5cc1a77a73
+6533363236373532643362323133386437346566
+[„bgR”≤çtÔ‰Ì«Ÿ¨\¡ßzs][„bgR”≤çtÔ‰Ì«Ÿ¨\¡ßzs˛]SHA matches with test sha
+
+Found file :ÂHANGMIN.G
+Cluster start: 14
+Size: 34
+Num of clusters in file: 1
+63 68 61 6E 67 20 6D 69 6E 67 20 7A 69 20 64 61 
+SHA1 of file:
+95c226c9437e005bd5eb99deebc2e40b798e639f
+e3626752d3b2138d74efe4edc7d9ac5cc1a77a73
+6533363236373532643362323133386437346566
+[ï¬&…C~][„bgR”≤çtÔ‰Ì«Ÿ¨\¡ßzs˛]

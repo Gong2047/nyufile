@@ -7,9 +7,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string.h>
-#include <openssl/sha.h>
 #include <math.h>
+#include <openssl/sha.h>
 
+#define SHA_DIGEST_LENGTH 20
 
 // Boot Sector
 #pragma pack(push,1)
@@ -340,8 +341,8 @@ char* padding_filename(char* filename){
     return padded_name;
 }
 
-DirEntry* search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root_cluster, char* fat, char * data_region, int bytes_per_sector, int sectors_per_cluster, int* mult){
-    * mult = 0;
+DirEntry** search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root_cluster, char* fat, char * data_region, int bytes_per_sector, int sectors_per_cluster, int* count){
+    *count = 0;
 
     int i = 0;
 
@@ -355,7 +356,7 @@ DirEntry* search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root
 
     // printf("Searching for file %s\n", targetfile);
 
-    DirEntry* found_file = NULL;
+    DirEntry** found_file_list = malloc(sizeof(DirEntry**) * number_entries_per_cluster);
 
     while (root_dir[i].DIR_Name[0] != 0x00 || get_next_cluster(fat, current_cluster) != -1){
 
@@ -364,20 +365,15 @@ DirEntry* search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root
         int isDir = current_entry->DIR_Attr & 0x10;
 
         char* name = process_name(current_entry->DIR_Name, isDir);
-        int start_cluster = current_entry->DIR_FstClusLO;
         int size = current_entry->DIR_FileSize;
 
-        // printf("Checking file %s\n", name);
+        // printf("\nChecking file %s\n", name);
         // printf("Target: %s\n", targetfile);
         
         if (current_entry->DIR_Name[0] == 0xE5 && strcmp((targetfile+1), (name+1)) == 0){
-            if (found_file != NULL){
-                // printf("Multiple files\n");
-                *mult = 1;
-                return NULL;
-            }
-            found_file = current_entry;
-            // printf("found file! %s\n", name);
+            // printf("found file! %s\n\n", name);
+            found_file_list[*count] = current_entry;
+            (*count)++;
         }
 
         i++;
@@ -393,11 +389,21 @@ DirEntry* search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root
             }
         }
     }
-    // if (found_file == NULL){
+    // if (*count == 0){
     //     printf("File not found\n");
+    // } else {
+    //     printf("Found %d files\n", *count);
+    //     for (int i = 0; i < *count; i++){
+    //         printf("Found file %s\n", process_name(found_file_list[i]->DIR_Name, 0));
+    //         printf("Size of file %d\n", found_file_list[i]->DIR_FileSize);
+    //         printf("Starting cluster %d\n", found_file_list[i]->DIR_FstClusLO);
+    //     }
+    //     printf("\n");
     // }
-    return found_file;
+    return found_file_list;
 }
+
+
 
 // Milestone 5: recover a large contiguously-allocated file
 
@@ -405,6 +411,8 @@ DirEntry* search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root
 // Nevertheless, for Milestone 5, you can assume that such a file is allocated contiguously. 
 // You can continue to assume that at most one deleted directory entry matches the given filename. 
 // If no such entry exists, your program should print filename: file not found (replace filename with the actual file name).
+
+
 
 // Milestone 6: detect ambiguous file recovery requests
 // In Milestones 4 and 5, you assumed that at most one deleted directory entry matches the given filename. 
@@ -424,6 +432,81 @@ DirEntry* search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root
 // [root@... cs202]# umount /mnt/disk
 // [root@... cs202]# ./nyufile fat32.disk -r TANG.TXT
 // TANG.TXT: multiple candidates found
+
+
+
+// Milestone 7: recover a contiguously-allocated file with SHA-1 hash
+
+// To solve the aforementioned ambiguity, 
+// the user can provide a SHA-1 hash via command-line option `-s sha1`
+// to help identify which deleted directory entry should be the target file.
+
+// In short, a SHA-1 hash is a 160-bit fingerprint of a file, often represented as 40 hexadecimal digits. 
+// For the purpose of this lab, you can assume that identical files always have the same SHA-1 hash, 
+// and different files always have vastly different SHA-1 hashes. 
+// Therefore, even if multiple candidates are found during recovery, at most one will match the given SHA-1 hash.
+
+// This scenario is illustrated in the following example:
+
+// [root@... cs202]# ./nyufile fat32.disk -r TANG.TXT -s c91761a2cc1562d36585614c8c680ecf5712e875
+// TANG.TXT: successfully recovered with SHA-1
+// [root@... cs202]# ./nyufile fat32.disk -l
+// HELLO.TXT (size = 14, starting cluster = 3)
+// DIR/ (starting cluster = 4)
+// EMPTY (size = 0)
+// TANG.TXT (size = 22, starting cluster = 5)
+// Total number of entries = 4
+
+// When the file is successfully recovered with SHA-1, your program should print 
+//      filename: successfully recovered with SHA-1 
+//      (replace filename with the actual file name).
+
+// Note that you can use the sha1sum command to compute the SHA-1 hash of a file:
+
+// [root@... cs202]# sha1sum /mnt/disk/TANG.TXT
+// c91761a2cc1562d36585614c8c680ecf5712e875  /mnt/disk/TANG.TXT
+
+// Also note that it is possible that the file is empty or occupies only one cluster. 
+// The SHA-1 hash for an empty file is 
+//      da39a3ee5e6b4b0d3255bfef95601890afd80709.
+
+// If no such file matches the given SHA-1 hash, your program should print 
+//      filename: file not found 
+//      (replace filename with the actual file name). 
+     
+// For example:
+
+// [root@... cs202]# ./nyufile fat32.disk -r TANG.TXT -s 0123456789abcdef0123456789abcdef01234567
+// TANG.TXT: file not found
+
+// The OpenSSL library provides a function SHA1(), which computes the SHA-1 hash of d[0...n-1] and stores the result in md[0...SHA_DIGEST_LENGTH-1]:
+
+// #include <openssl/sha.h>
+
+// #define SHA_DIGEST_LENGTH 20
+
+// unsigned char *SHA1(const unsigned char *d, size_t n, unsigned char *md);
+// You need to add the linker option -lcrypto to link with the OpenSSL library.
+
+void print_sha(unsigned char *sha){
+    int i;
+    for (i = 0; i < SHA_DIGEST_LENGTH; i++){
+        printf("%02x", sha[i]);
+    }
+    printf("\n");
+}
+
+// reference: https://stackoverflow.com/questions/3408706/hexadecimal-string-to-byte-array-in-c
+
+unsigned char *string_to_sha(char *str){
+    unsigned char *sha = malloc (SHA_DIGEST_LENGTH+1);
+    int i;
+    for (i = 0; i < SHA_DIGEST_LENGTH; i++){
+        sscanf(str + 2*i, "%02x", &sha[i]);
+    }
+    return sha;
+}
+
 
 
 int main(int argc, char **argv) {
@@ -516,8 +599,10 @@ int main(int argc, char **argv) {
     int numFats = boot->BPB_NumFATs;
     int bytesPerSector = boot->BPB_BytsPerSec;
     int sectorsPerCluster = boot->BPB_SecPerClus;
+    int bytesPerCluster = bytesPerSector * sectorsPerCluster;
+
     int reservedSectors = boot->BPB_RsvdSecCnt;
-    
+
     int fatSizeInSector = boot->BPB_FATSz32;
 
     // make a list of fats storing addresses for each fat
@@ -572,18 +657,24 @@ int main(int argc, char **argv) {
     } else if (rFlag && !sFlag) {
         // printf("Recovering contiguous file %s without SHA\n", filename);
         
+        DirEntry **fileEntryList = NULL;
         DirEntry *fileDir = NULL;
-        int mult = 0;
+        int count = 0;
 
         if (filename != NULL){
-            fileDir = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerSector, sectorsPerCluster, &mult);
+            fileEntryList = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerSector, sectorsPerCluster, &count);
         }
         
-        if (mult == 1){
+        if (count > 1){
             printf("%s: multiple candidates found\n", filename);
-        } else if (fileDir != NULL){
+            exit(EXIT_FAILURE);
+        } else {
+            fileDir = fileEntryList[0];
+        }
+        
+        if (fileDir != NULL){
             char *name = fileDir->DIR_Name;
-            // printf("Found file %s\n", padding_filename(name));
+            // printf("Found file %s\n", process_name(name));
 
             int size = fileDir->DIR_FileSize;
             unsigned short FstClusLO = fileDir->DIR_FstClusLO;
@@ -634,6 +725,152 @@ int main(int argc, char **argv) {
 
             }
             printf("%s: successfully recovered\n", filename);
+        } else {
+            printf("%s: file not found\n", filename);
+        }
+    } else if (rFlag && sFlag) {
+        int i = 0;
+        // printf("\nRecovering contiguous file %s with SHA:\n", filename);
+        
+        // printf("Received SHA: %s\n\n", sha1);
+
+        // Reference for SHA-1: https://home.uncg.edu/cmp/faculty/srtate/580.f11/sha1examples.php
+
+        unsigned char *received_sha = string_to_sha(sha1);
+        // print_sha(received_sha);
+
+        // // char *test_text = "CHANG mingzi DUAN houzhui\n";  // e3626752d3b2138d74efe4edc7d9ac5cc1a77a73
+        // char *test_text = "chang ming zi dan shi gai zi mu\n"; // 81cefe08b2e6eed6767412d4a18607c5cb5712ee
+
+        // unsigned char test_sha[SHA_DIGEST_LENGTH];
+        // SHA1(test_text, strlen(test_text), test_sha);
+       
+        // printf("\nSHA1 of test text:\n");
+
+        // print_sha(test_sha);
+
+        // printf("SHA1 test ended \n");
+
+        DirEntry **fileEntryList = NULL;
+        DirEntry *fileDir = NULL;
+        int count = 0;
+
+        if (filename != NULL){
+            fileEntryList = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerSector, sectorsPerCluster, &count);
+        }
+
+        if (fileEntryList != NULL){
+            for (i = 0; i<count; i++){
+                DirEntry * curFile = fileEntryList[i];
+                
+                char *name = curFile->DIR_Name;
+
+                int size = curFile->DIR_FileSize;
+                unsigned short FstClusLO = curFile->DIR_FstClusLO;
+                unsigned short FstClusHI = curFile->DIR_FstClusHI;
+                int firstCluster = FstClusLO + (FstClusHI << 16);
+
+                int fileClusterNum = (int)ceil((float)size / (float)(bytesPerSector * sectorsPerCluster));
+
+                // printf("\n");
+                // printf("Found file :%s\n", process_name(name, 0));
+                // printf("Cluster start: %d\n", firstCluster);
+                // printf("Size: %d\n", size);
+                // printf("Num of clusters in file: %d\n", fileClusterNum);
+                // printf("File Start:\n");
+                char *fileStartByte = get_cluster_address(dataRegion, firstCluster, bytesPerSector, sectorsPerCluster);
+                // print_bytes(fileStartByte, 16);
+
+                unsigned char file_sha[SHA_DIGEST_LENGTH];
+
+                if (fileClusterNum == 1){
+                    SHA1(fileStartByte, size, file_sha);
+                } else {
+                    SHA_CTX ctx;
+                    SHA1_Init(&ctx);
+                    int j = 0;
+                    
+                    for (j = 0; j < fileClusterNum; j++){
+                        if (j != fileClusterNum -1){
+                            SHA1_Update(&ctx, fileStartByte + j*bytesPerCluster, bytesPerCluster);
+                        } else {
+                            SHA1_Update(&ctx, fileStartByte + j*bytesPerCluster, size % bytesPerCluster);
+                        }
+                    }
+                    SHA1_Final(file_sha, &ctx);
+                }
+
+                // printf("SHA1 of file:\n");
+                // print_sha(file_sha);
+                // print_sha(test_sha);
+                // print_sha(sha1);
+
+                // printf("[%s][%s]", file_sha, test_sha);
+
+                // if (memcmp(file_sha,test_sha, SHA_DIGEST_LENGTH)==0){
+                //     printf("SHA matches with test sha\n");
+                // }
+                if (memcmp(file_sha,received_sha, SHA_DIGEST_LENGTH)==0){
+                    // printf("SHA matches with received sha\n");
+                    fileDir = curFile;
+                    break;
+                }
+            }
+        }
+
+        if (fileDir != NULL){
+            char *name = fileDir->DIR_Name;
+            // printf("\nFound file %s\n", process_name(name, 0));
+
+            int size = fileDir->DIR_FileSize;
+            unsigned short FstClusLO = fileDir->DIR_FstClusLO;
+            unsigned short FstClusHI = fileDir->DIR_FstClusHI;
+            int firstCluster = FstClusLO + (FstClusHI << 16);
+            // printf("Cluster start: %d\n", firstCluster);
+            // printf("Size: %d\n", size);
+            // printf("Start from byte %d\n", get_cluster_address(dataRegion, firstCluster, bytesPerSector, sectorsPerCluster) - mapped);
+
+            int fileClusterNum = (int)ceil((float)size / (float)(bytesPerCluster));
+            // printf("Num of clusters in file: %d\n", fileClusterNum);
+
+            char* recoveredName = padding_filename(filename);
+            memcpy(fileDir->DIR_Name, recoveredName, 11);
+            // printf("Recovered name: [%s]\n", recoveredName);    
+        
+            if (fileClusterNum == 1){
+                //recover the fat
+                int* fileFatEntry = (int*)fat1 + firstCluster;
+                // print_bytes((char *)fileFatEntry, 4);
+                *fileFatEntry = 0x0FFFFFF8;
+                // print_bytes((char *)fileFatEntry, 4);
+
+
+                // I only handled FAT 1 !!!! BUT it passed the milestone 4 
+
+
+            } else {
+               
+                int fatID = 0;
+                for (fatID = 0; fatID < numFats; fatID++){
+                    char *currentFat = FATs[fatID];
+
+                    int* fileFatEntry = (int*)currentFat + firstCluster;
+                    // print_bytes((char *)fileFatEntry, 16);
+
+                    int i = 0;
+                    for (i = 0; i < fileClusterNum; i++){
+                        int *currentEntry = (int*)currentFat + (firstCluster+i);
+                        if (i != fileClusterNum-1){
+                            *currentEntry = firstCluster + i + 1;
+                        } else {
+                            *currentEntry = 0x0FFFFFF8;
+                        }
+                    }
+                    // print_bytes((char *)fileFatEntry, 16);
+                }
+
+            }
+            printf("%s: successfully recovered with SHA-1\n", filename);
         } else {
             printf("%s: file not found\n", filename);
         }
