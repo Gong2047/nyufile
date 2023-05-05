@@ -2,10 +2,10 @@
 all: nyufile
 
 nyufile: nyufile.o
-	gcc -pthread -o nyufile nyufile.o
+	gcc -o nyufile nyufile.o -lm
 
 nyufile.o: nyufile.c 
-	gcc -pthread -c nyufile.c
+	gcc -c nyufile.c -lm
 
 .PHONY: clean
 clean:
