@@ -64,8 +64,8 @@ typedef struct DirEntry {
 #pragma pack(pop)
 
 // return the address of a cluster
-char* get_cluster_address(char* dataRegion, int cluster_num, int bytes_per_sector, int sectors_per_cluster){
-    return dataRegion + (cluster_num - 2) * sectors_per_cluster * bytes_per_sector;
+char* get_cluster_address(char* dataRegion, int cluster_num, int bytes_per_cluster){
+    return dataRegion + (cluster_num - 2) * bytes_per_cluster;
 }
 
 // get the next cluster from the fat
@@ -192,13 +192,13 @@ char *process_name(char *filename, int is_dir){             // can be edited for
     return newName;
 }
 
-void list_root_directory(DirEntry *root_dir, int root_cluster, char* fat, char * data_region, int bytes_per_sector, int sectors_per_cluster){
+void list_root_directory(DirEntry *root_dir, int root_cluster, char* fat, char * data_region, int bytes_per_cluster){
     int i = 0;
     int total_entries = 0;
     size_t size_dir = sizeof(DirEntry);
     int current_cluster = root_cluster;
 
-    int number_entries_per_cluster = bytes_per_sector * sectors_per_cluster / size_dir;
+    int number_entries_per_cluster = bytes_per_cluster / size_dir;
     // printf("number_entries_per_cluster = %d\n\n", number_entries_per_cluster);
     
     // print_bytes((char *)root_dir, 32);
@@ -239,7 +239,7 @@ void list_root_directory(DirEntry *root_dir, int root_cluster, char* fat, char *
             } else {
                 // printf("next_cluster = %d\n", next_cluster);
                 current_cluster = next_cluster;
-                root_dir = (DirEntry *)get_cluster_address(data_region, current_cluster, bytes_per_sector, sectors_per_cluster);
+                root_dir = (DirEntry *)get_cluster_address(data_region, current_cluster, bytes_per_cluster);
                 // print_bytes((char *)root_dir, 32);
                 i = 0;
             }
@@ -341,7 +341,7 @@ char* padding_filename(char* filename){
     return padded_name;
 }
 
-DirEntry** search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root_cluster, char* fat, char * data_region, int bytes_per_sector, int sectors_per_cluster, int* count){
+DirEntry** search_for_deleled_file(DirEntry *root_dir, char* targetfile, int root_cluster, char* fat, char * data_region, int bytes_per_cluster, int* count){
     *count = 0;
 
     int i = 0;
@@ -349,7 +349,7 @@ DirEntry** search_for_deleled_file(DirEntry *root_dir, char* targetfile, int roo
     size_t size_dir = sizeof(DirEntry);
     int current_cluster = root_cluster;
 
-    int number_entries_per_cluster = bytes_per_sector * sectors_per_cluster / size_dir;
+    int number_entries_per_cluster = bytes_per_cluster / size_dir;
     // printf("number_entries_per_cluster = %d\n\n", number_entries_per_cluster);
     
     // print_bytes((char *)root_dir, 32);
@@ -384,7 +384,7 @@ DirEntry** search_for_deleled_file(DirEntry *root_dir, char* targetfile, int roo
                 break;
             } else {
                 current_cluster = next_cluster;
-                root_dir = (DirEntry *)get_cluster_address(data_region, current_cluster, bytes_per_sector, sectors_per_cluster);
+                root_dir = (DirEntry *)get_cluster_address(data_region, current_cluster, bytes_per_cluster);
                 i = 0;
             }
         }
@@ -647,13 +647,13 @@ int main(int argc, char **argv) {
     // display root directory
         char *rootDirAddr = mapped + rootDirStartByte;
         // printf("%p\n", rootDirAddr);
-        // printf("%p\n", get_cluster_address(dataRegion, rootDirCluster, bytesPerSector, sectorsPerCluster));
+        // printf("%p\n", get_cluster_address(dataRegion, rootDirCluster, bytesPerCluster));
 
 
     if (iFlag) {
         print_system_info(numFats, bytesPerSector, sectorsPerCluster, reservedSectors);
     } else if (lFlag) {
-        list_root_directory((DirEntry *)rootDirAddr, rootDirCluster, fat1, dataRegion, bytesPerSector, sectorsPerCluster);
+        list_root_directory((DirEntry *)rootDirAddr, rootDirCluster, fat1, dataRegion, bytesPerCluster);
     } else if (rFlag && !sFlag) {
         // printf("Recovering contiguous file %s without SHA\n", filename);
         
@@ -662,7 +662,7 @@ int main(int argc, char **argv) {
         int count = 0;
 
         if (filename != NULL){
-            fileEntryList = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerSector, sectorsPerCluster, &count);
+            fileEntryList = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerCluster, &count);
         }
         
         if (count > 1){
@@ -682,9 +682,9 @@ int main(int argc, char **argv) {
             int firstCluster = FstClusLO + (FstClusHI << 16);
             // printf("Cluster start: %d\n", firstCluster);
             // printf("Size: %d\n", size);
-            // printf("Start from byte %d\n", get_cluster_address(dataRegion, firstCluster, bytesPerSector, sectorsPerCluster) - mapped);
+            // printf("Start from byte %d\n", get_cluster_address(dataRegion, firstCluster, bytesPerCluster) - mapped);
 
-            int fileClusterNum = (int)ceil((float)size / (float)(bytesPerSector * sectorsPerCluster));
+            int fileClusterNum = (int)ceil((float)size / (float)(bytesPerCluster));
             // printf("Num of clusters in file: %d\n", fileClusterNum);
 
             char* recoveredName = padding_filename(filename);
@@ -756,7 +756,7 @@ int main(int argc, char **argv) {
         int count = 0;
 
         if (filename != NULL){
-            fileEntryList = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerSector, sectorsPerCluster, &count);
+            fileEntryList = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerCluster, &count);
         }
 
         if (fileEntryList != NULL){
@@ -770,7 +770,7 @@ int main(int argc, char **argv) {
                 unsigned short FstClusHI = curFile->DIR_FstClusHI;
                 int firstCluster = FstClusLO + (FstClusHI << 16);
 
-                int fileClusterNum = (int)ceil((float)size / (float)(bytesPerSector * sectorsPerCluster));
+                int fileClusterNum = (int)ceil((float)size / (float)(bytesPerCluster));
 
                 // printf("\n");
                 // printf("Found file :%s\n", process_name(name, 0));
@@ -778,7 +778,7 @@ int main(int argc, char **argv) {
                 // printf("Size: %d\n", size);
                 // printf("Num of clusters in file: %d\n", fileClusterNum);
                 // printf("File Start:\n");
-                char *fileStartByte = get_cluster_address(dataRegion, firstCluster, bytesPerSector, sectorsPerCluster);
+                char *fileStartByte = get_cluster_address(dataRegion, firstCluster, bytesPerCluster);
                 // print_bytes(fileStartByte, 16);
 
                 unsigned char file_sha[SHA_DIGEST_LENGTH];
@@ -828,7 +828,7 @@ int main(int argc, char **argv) {
             int firstCluster = FstClusLO + (FstClusHI << 16);
             // printf("Cluster start: %d\n", firstCluster);
             // printf("Size: %d\n", size);
-            // printf("Start from byte %d\n", get_cluster_address(dataRegion, firstCluster, bytesPerSector, sectorsPerCluster) - mapped);
+            // printf("Start from byte %d\n", get_cluster_address(dataRegion, firstCluster, bytesPerCluster) - mapped);
 
             int fileClusterNum = (int)ceil((float)size / (float)(bytesPerCluster));
             // printf("Num of clusters in file: %d\n", fileClusterNum);
@@ -871,6 +871,191 @@ int main(int argc, char **argv) {
 
             }
             printf("%s: successfully recovered with SHA-1\n", filename);
+        } else {
+            printf("%s: file not found\n", filename);
+        }
+    } else if (RFlag && sFlag) {
+        // printf("\nRecovering non-contiguous file %s with SHA:\n", filename);
+        
+        unsigned char *received_sha = string_to_sha(sha1);
+        // printf("\nReceived SHA1:\n");
+        // print_sha(received_sha);
+
+
+        DirEntry **fileEntryList = NULL;
+        DirEntry *fileDir = NULL;
+        int file_count = 0;
+
+        int clusters[5];
+
+        if (filename != NULL){
+            fileEntryList = search_for_deleled_file((DirEntry *)rootDirAddr, filename, rootDirCluster, fat1, dataRegion, bytesPerCluster, &file_count);
+        }
+
+        if (fileEntryList != NULL){
+            int file_index = 0;
+            for (file_index = 0; file_index < file_count; file_index++){
+                
+                DirEntry * curFile = fileEntryList[file_index];
+                
+                int size = curFile->DIR_FileSize;
+                unsigned short FstClusLO = curFile->DIR_FstClusLO;
+                unsigned short FstClusHI = curFile->DIR_FstClusHI;
+                int firstCluster = FstClusLO + (FstClusHI << 16);
+
+                int fileClusterNum = (int)ceil((float)size / (float)(bytesPerCluster));
+
+                // printf("\n");
+                // printf("Found file :%s\n", process_name(name, 0));
+                // printf("Cluster start: %d\n", firstCluster);
+                // printf("Size: %d\n", size);
+                // printf("Num of clusters in file: %d\n", fileClusterNum);
+
+                char *fileStartByte = get_cluster_address(dataRegion, firstCluster, bytesPerCluster);
+                
+                // printf("File Start:\n");
+                // print_bytes(fileStartByte, 16);
+
+                unsigned char file_sha[SHA_DIGEST_LENGTH];
+
+                if (fileClusterNum == 1){
+                    SHA1(fileStartByte, size, file_sha);
+                    print_sha(file_sha);
+                    if (memcmp(file_sha,received_sha, SHA_DIGEST_LENGTH)==0){
+                        // printf("SHA matches with received sha\n");
+                        fileDir = curFile;
+                        break;
+                    }
+                } else {
+
+                    
+                    clusters[0] = firstCluster;
+
+                    int limit = 22;
+                    int i,j,k,m;
+                    int Found = 0;
+
+                    for (i = 2; i < limit; i++){
+                        if (Found){
+                            break;
+                        }
+                        clusters[1] = i;
+                        for (j = 2; j < limit; j++){
+                            if (Found){
+                                break;
+                            }
+                            if (i==j){
+                                continue;
+                            }
+                            clusters[2] = j;
+                            for (k = 2; k < limit; k++){
+                                if (Found){
+                                    break;
+                                }
+                                if (i==k || j==k){
+                                    continue;
+                                }
+                                clusters[3] = k;
+                                for (m = 2; m < limit; m++){
+                                    if (Found){
+                                        break;
+                                    }
+                                    if (i==m || j==m || k==m){
+                                        continue;
+                                    }
+                                    clusters[4] = m;
+                                    // printf("\nCluster: %d %d %d %d %d, length: %d\n", clusters[0], clusters[1], clusters[2], clusters[3], clusters[4], fileClusterNum);
+                                    
+                                    SHA_CTX ctx;
+
+                                    SHA1_Init(&ctx);
+
+                                    SHA1_Update(&ctx, fileStartByte, bytesPerCluster);
+
+                                    int id;
+                                    for (id = 1; id < fileClusterNum; id++) {
+                                        char *clusterAddr = get_cluster_address(dataRegion, clusters[id], bytesPerCluster);
+                                        if (id != fileClusterNum -1){
+                                            SHA1_Update(&ctx, clusterAddr, bytesPerCluster);
+                                        } else {
+                                            SHA1_Update(&ctx, clusterAddr, size % bytesPerCluster);
+                                        }
+                                        
+                                    }
+                                    SHA1_Final(file_sha, &ctx);
+                                    // print_sha(file_sha);
+                                    // print_sha(received_sha);
+
+                                    if (memcmp(file_sha,received_sha, SHA_DIGEST_LENGTH)==0){
+                                        // printf("\nSHA matches with received sha\n");
+                                        fileDir = curFile;
+                                        Found = 1;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                
+            }   
+
+            if (fileDir != NULL){
+                char *name = fileDir->DIR_Name;
+                int size = fileDir->DIR_FileSize;
+
+                // printf("Found file :%s\n", process_name(fileDir->DIR_Name, 0));
+                // printf("File size: %d\n", fileDir->DIR_FileSize);
+
+                unsigned short FstClusLO = fileDir->DIR_FstClusLO;
+                unsigned short FstClusHI = fileDir->DIR_FstClusHI;
+                int firstCluster = FstClusLO + (FstClusHI << 16);
+
+                // printf("File start cluster: %d\n", firstCluster);
+
+                char *fileStartByte = get_cluster_address(dataRegion, firstCluster, bytesPerCluster);
+                
+                // printf("File Start:\n");
+                // print_bytes(fileStartByte, 16);
+
+                int fileClusterNum = (int)ceil((float)size / (float)(bytesPerCluster));
+                // printf("Num of clusters in file: %d\n", fileClusterNum);
+
+                char* recoveredName = padding_filename(filename);
+                memcpy(fileDir->DIR_Name, recoveredName, 11);
+                // printf("Recovered name: [%s]\n", recoveredName);    
+            
+                if (fileClusterNum == 1){
+                    //recover the fat
+                    int* fileFatEntry = (int*)fat1 + firstCluster;
+                    // print_bytes((char *)fileFatEntry, 4);
+                    *fileFatEntry = 0x0FFFFFF8;
+                    // print_bytes((char *)fileFatEntry, 4);
+
+                } else {
+                
+                    int fatID = 0;
+                    for (fatID = 0; fatID < numFats; fatID++){
+                        char *currentFat = FATs[fatID];
+
+                        int i = 0;
+                        for (i = 0; i < fileClusterNum; i++){
+                            int *currentEntry = (int*)currentFat + (clusters[i]);
+                            if (i != fileClusterNum-1){
+                                *currentEntry = clusters[i+1];
+                            } else {
+                                *currentEntry = 0x0FFFFFF8;
+                            }
+                        }
+                    }
+
+                }
+                printf("%s: successfully recovered with SHA-1\n", filename);
+            } else {
+                printf("%s: file not found\n", filename);
+            }
+           
         } else {
             printf("%s: file not found\n", filename);
         }
